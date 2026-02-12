@@ -52,13 +52,21 @@ class NotificationService {
       importance: Importance.high,
     );
 
-    // Configurar notificaciones locales para Android
+    // Configurar notificaciones locales: Android + iOS
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
+
+    const DarwinInitializationSettings initializationSettingsIOS =
+        DarwinInitializationSettings(
+      requestAlertPermission: false, // Los permisos se piden con Firebase
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
 
     const InitializationSettings initializationSettings =
         InitializationSettings(
       android: initializationSettingsAndroid,
+      iOS: initializationSettingsIOS,
     );
 
     await _localNotifications.initialize(
@@ -176,7 +184,7 @@ class NotificationService {
     });
   }
 
-  // Mostrar notificación local
+  // Mostrar notificación local (Android e iOS)
   static Future<void> _showLocalNotification({
     required String title,
     required String body,
@@ -191,8 +199,16 @@ class NotificationService {
       showWhen: true,
     );
 
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      categoryIdentifier: 'fidesoft_solicitudes',
+    );
+
     const NotificationDetails notificationDetails = NotificationDetails(
       android: androidDetails,
+      iOS: iosDetails,
     );
 
     await _localNotifications.show(
