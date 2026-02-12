@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "101481845574",
+    "project_id": "sistema-vacaciones-permisos",
+    "storage_bucket": "sistema-vacaciones-permisos.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:101481845574:android:ce85f01b67b74ae92e0b47",
+        "android_client_info": {
+          "package_name": "com.fidesoft.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDmJNPcri-Wr83u2dYGGfZvluWaFCU3FWE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
