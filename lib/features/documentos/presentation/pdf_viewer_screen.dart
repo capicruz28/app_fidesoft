@@ -4,6 +4,7 @@ import 'dart:io'; // Para manejar archivos
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // PAQUETE REQUERIDO: services (Para SystemUiOverlayStyle)
 import 'package:pdfx/pdfx.dart'; 
+import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:path_provider/path_provider.dart'; // PAQUETE REQUERIDO: path_provider
 import 'package:share_plus/share_plus.dart';         // PAQUETE REQUERIDO: share_plus
 
@@ -27,11 +28,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   late Future<PdfControllerPinch> _pdfControllerFuture;
   late Uint8List _pdfBytes; // Almacenamos los bytes decodificados aquí
   bool _isSavingOrSharing = false;
+  Future<String>? _iosPdfPathFuture;
 
   @override
   void initState() {
     super.initState();
-    _pdfControllerFuture = _initializePdfController();
+    _pdfControllerFuture = _initializePdfController(); // Android (pdfx)
+    if (Platform.isIOS) {
+      _iosPdfPathFuture = _initializeIosPdfPath(); // iOS (PDFKit)
+    }
   }
 
   Future<PdfControllerPinch> _initializePdfController() async {
@@ -45,6 +50,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       
       if (_pdfBytes.isEmpty) {
         throw Exception("Los datos decodificados están vacíos.");
+      }
+
+      // En iOS el render con pdfx puede fallar con PDFs firmados digitalmente.
+      // Igual decodificamos y guardamos bytes para compartir/guardar, pero el render lo hace PDFKit.
+      if (Platform.isIOS) {
+        // Retornamos un controlador válido aunque no se use en el build iOS.
+        final Future<PdfDocument> pdfDocumentFuture = PdfDocument.openData(_pdfBytes);
+        return PdfControllerPinch(document: pdfDocumentFuture);
       }
 
       // Usar openData que funciona bien con la arquitectura Future/Async
@@ -61,6 +74,39 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     } catch (e) {
       print('Error al cargar PDF: ${e.toString()}');
       throw Exception('Error al cargar PDF: Verifique la conexión o el formato.');
+    }
+  }
+
+  Future<String> _initializeIosPdfPath() async {
+    try {
+      if (widget.base64Pdf.isEmpty) {
+        throw Exception("La cadena Base64 está vacía.");
+      }
+
+      // Asegurar bytes decodificados (si _initializePdfController aún no terminó)
+      Uint8List bytes;
+      try {
+        bytes = _pdfBytes;
+        // ignore: unused_catch_clause
+      } catch (_) {
+        bytes = base64Decode(widget.base64Pdf);
+      }
+
+      if (bytes.isEmpty) {
+        throw Exception("Los datos decodificados están vacíos.");
+      }
+
+      final directory = await getTemporaryDirectory();
+      final safeTitle = widget.title.replaceAll(RegExp(r'[^a-zA-Z0-9_\\-]'), '_');
+      final fileName = '${safeTitle}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+      final file = File('${directory.path}/$fileName');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } on FormatException catch (e) {
+      print('Error de formato Base64 (iOS): ${e.message}');
+      throw Exception('Error de formato Base64: Asegúrese de que la cadena sea válida.');
+    } catch (e) {
+      throw Exception('Error al preparar PDF en iOS: $e');
     }
   }
 
@@ -223,6 +269,51 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
+  Widget _buildIosPdfViewer(Color color) {
+    return FutureBuilder<String>(
+      future: _iosPdfPathFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingWidget(color);
+        }
+        if (snapshot.hasError) {
+          return _buildErrorWidget(color, snapshot.error.toString());
+        }
+        final path = snapshot.data;
+        if (path == null || path.isEmpty) {
+          return _buildErrorWidget(color, 'No se pudo cargar el documento');
+        }
+        return PDFView(
+          filePath: path,
+          enableSwipe: true,
+          swipeHorizontal: false,
+          autoSpacing: true,
+          pageFling: true,
+          fitPolicy: FitPolicy.BOTH,
+          onError: (error) {
+            // Evitar setState si ya no está montado
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error al mostrar PDF: $error'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          },
+          onPageError: (page, error) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error en página $page: $error'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // --- Build Principal ---
 
   @override
@@ -281,6 +372,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       body: FutureBuilder<PdfControllerPinch>(
         future: _pdfControllerFuture,
         builder: (context, snapshot) {
+          // iOS: render nativo (PDFKit) para soportar PDFs con firma digital/annotations.
+          // Android: mantener pdfx (funciona correctamente).
+          if (Platform.isIOS) {
+            return _buildIosPdfViewer(color);
+          }
+
           if (snapshot.connectionState == ConnectionState.waiting) {
             return _buildLoadingWidget(color);
           }
