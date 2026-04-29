@@ -1,18 +1,8 @@
 // lib/data/services/document_service.dart
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/network/api_client.dart';
 
 class DocumentService {
-  // Base URL del nuevo API
-  final String baseUrlNuevo = 'http://170.231.171.118:9096/api/v1';
-  
-  /// Obtener token de autenticación
-  Future<String?> _getAccessToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('access_token');
-  }
-
   /// Obtener Boletas de Pago (puede devolver varias: por mes y/o por semana).
   /// Sin mes: GET .../boleta-pago?anio=2025 (todas las boletas del año).
   /// Con mes: GET .../boleta-pago?anio=2025&mes=07.
@@ -21,23 +11,13 @@ class DocumentService {
     required String anio,
     String? mes,
   }) async {
-    final token = await _getAccessToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('No hay token de autenticación');
-    }
-
     final queryParams = <String, String>{'anio': anio};
     if (mes != null && mes.isNotEmpty) queryParams['mes'] = mes;
-    final url = Uri.parse('$baseUrlNuevo/vacaciones/boleta-pago')
-        .replace(queryParameters: queryParams);
 
     try {
-      final response = await http.get(
-        url,
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.get(
+        '/vacaciones/boleta-pago?${Uri(queryParameters: queryParams).query}',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -53,12 +33,16 @@ class DocumentService {
           return [
             {
               'archivo_pdf_base64': base64,
-              'nombre_archivo': (jsonResponse['nombre_archivo'] ?? '').toString(),
-              'codigo_trabajador': jsonResponse['codigo_trabajador']?.toString(),
+              'nombre_archivo': (jsonResponse['nombre_archivo'] ?? '')
+                  .toString(),
+              'codigo_trabajador': jsonResponse['codigo_trabajador']
+                  ?.toString(),
               'anio': (jsonResponse['anio'] ?? anio).toString(),
               'mes': (jsonResponse['mes'] ?? mes ?? '').toString(),
               'nseman': nseman,
-              'semana': semana is int ? semana : (semana != null ? int.tryParse(semana.toString()) : null),
+              'semana': semana is int
+                  ? semana
+                  : (semana != null ? int.tryParse(semana.toString()) : null),
             },
           ];
         }
@@ -75,7 +59,9 @@ class DocumentService {
             'anio': (map['anio'] ?? anio).toString(),
             'mes': (map['mes'] ?? mes ?? '').toString(),
             'nseman': map['nseman']?.toString() ?? '0',
-            'semana': semana is int ? semana : (semana != null ? int.tryParse(semana.toString()) : null),
+            'semana': semana is int
+                ? semana
+                : (semana != null ? int.tryParse(semana.toString()) : null),
           });
         }
         if (list.isEmpty) {
@@ -86,9 +72,11 @@ class DocumentService {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
         final errorCode = errorBody?['error_code'] as String?;
         if (errorCode == 'BOLETA_NOT_FOUND') {
-          throw Exception(mes != null && mes.isNotEmpty
-              ? 'Boleta no encontrada para el año $anio y mes $mes'
-              : 'Boleta no encontrada para el año $anio');
+          throw Exception(
+            mes != null && mes.isNotEmpty
+                ? 'Boleta no encontrada para el año $anio y mes $mes'
+                : 'Boleta no encontrada para el año $anio',
+          );
         } else if (errorCode == 'BOLETA_SIN_ARCHIVO') {
           throw Exception('La boleta no tiene archivo PDF disponible');
         }
@@ -99,7 +87,10 @@ class DocumentService {
         throw Exception('Error de procesamiento en el servidor');
       } else {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
-        throw Exception(errorBody?['detail']?.toString() ?? 'Error al obtener boleta. Código: ${response.statusCode}');
+        throw Exception(
+          errorBody?['detail']?.toString() ??
+              'Error al obtener boleta. Código: ${response.statusCode}',
+        );
       }
     } catch (e) {
       if (e.toString().contains('SESSION_EXPIRED')) {
@@ -115,23 +106,12 @@ class DocumentService {
   Future<List<Map<String, dynamic>>> obtenerCertificadosCTS({
     required String anio,
   }) async {
-    final token = await _getAccessToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('No hay token de autenticación');
-    }
-
-    final url = Uri.parse('$baseUrlNuevo/vacaciones/certificado-cts')
-        .replace(queryParameters: {
-      'anio': anio,
-    });
+    final queryParams = <String, String>{'anio': anio};
 
     try {
-      final response = await http.get(
-        url,
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.get(
+        '/vacaciones/certificado-cts?${Uri(queryParameters: queryParams).query}',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -147,12 +127,15 @@ class DocumentService {
           return [
             {
               'archivo_pdf_base64': base64,
-              'nombre_archivo': (jsonResponse['nombre_archivo'] ?? '').toString(),
-              'codigo_trabajador': jsonResponse['codigo_trabajador']?.toString(),
+              'nombre_archivo': (jsonResponse['nombre_archivo'] ?? '')
+                  .toString(),
+              'codigo_trabajador': jsonResponse['codigo_trabajador']
+                  ?.toString(),
               'anio': (jsonResponse['anio'] ?? anio).toString(),
               'mes': jsonResponse['mes']?.toString(),
               'nseman': nseman,
-              'tipo_documento': (jsonResponse['tipo_documento'] ?? '').toString(),
+              'tipo_documento': (jsonResponse['tipo_documento'] ?? '')
+                  .toString(),
             },
           ];
         }
@@ -169,7 +152,9 @@ class DocumentService {
             'anio': (map['anio'] ?? anio).toString(),
             'mes': map['mes']?.toString(),
             'nseman': map['nseman']?.toString() ?? '0',
-            'semana': semana is int ? semana : (semana != null ? int.tryParse(semana.toString()) : null),
+            'semana': semana is int
+                ? semana
+                : (semana != null ? int.tryParse(semana.toString()) : null),
             'tipo_documento': (map['tipo_documento'] ?? '').toString(),
           });
         }
@@ -192,7 +177,10 @@ class DocumentService {
         throw Exception('Error de procesamiento en el servidor');
       } else {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
-        throw Exception(errorBody?['detail']?.toString() ?? 'Error al obtener certificado. Código: ${response.statusCode}');
+        throw Exception(
+          errorBody?['detail']?.toString() ??
+              'Error al obtener certificado. Código: ${response.statusCode}',
+        );
       }
     } catch (e) {
       if (e.toString().contains('SESSION_EXPIRED')) {
@@ -210,23 +198,13 @@ class DocumentService {
     required String anio,
     String? mes,
   }) async {
-    final token = await _getAccessToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('No hay token de autenticación');
-    }
-
     final queryParams = <String, String>{'anio': anio};
     if (mes != null && mes.isNotEmpty) queryParams['mes'] = mes;
-    final url = Uri.parse('$baseUrlNuevo/vacaciones/documento-pago')
-        .replace(queryParameters: queryParams);
 
     try {
-      final response = await http.get(
-        url,
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.get(
+        '/vacaciones/documento-pago?${Uri(queryParameters: queryParams).query}',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -248,7 +226,9 @@ class DocumentService {
             'anio': (map['anio'] ?? anio).toString(),
             'mes': (map['mes'] ?? mes ?? '').toString(),
             'nseman': map['nseman']?.toString() ?? '0',
-            'semana': semana is int ? semana : (semana != null ? int.tryParse(semana.toString()) : null),
+            'semana': semana is int
+                ? semana
+                : (semana != null ? int.tryParse(semana.toString()) : null),
             'tipo_documento': (map['tipo_documento'] ?? '').toString(),
           });
         }
@@ -258,14 +238,19 @@ class DocumentService {
         return list;
       } else if (response.statusCode == 404) {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
-        throw Exception(errorBody?['detail']?.toString() ?? 'Documentos no encontrados');
+        throw Exception(
+          errorBody?['detail']?.toString() ?? 'Documentos no encontrados',
+        );
       } else if (response.statusCode == 401) {
         throw Exception('SESSION_EXPIRED');
       } else if (response.statusCode == 500) {
         throw Exception('Error de procesamiento en el servidor');
       } else {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
-        throw Exception(errorBody?['detail']?.toString() ?? 'Error al obtener documentos. Código: ${response.statusCode}');
+        throw Exception(
+          errorBody?['detail']?.toString() ??
+              'Error al obtener documentos. Código: ${response.statusCode}',
+        );
       }
     } catch (e) {
       if (e.toString().contains('SESSION_EXPIRED')) {
@@ -279,20 +264,10 @@ class DocumentService {
   /// GET /api/v1/vacaciones/documentos-empresa
   /// La API devuelve { "items": [ {...}, {...} ] }.
   Future<List<Map<String, dynamic>>> obtenerReglamentos() async {
-    final token = await _getAccessToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('No hay token de autenticación');
-    }
-
-    final url = Uri.parse('$baseUrlNuevo/vacaciones/documentos-empresa');
-
     try {
-      final response = await http.get(
-        url,
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.get(
+        '/vacaciones/documentos-empresa',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -319,14 +294,19 @@ class DocumentService {
         return list;
       } else if (response.statusCode == 404) {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
-        throw Exception(errorBody?['detail']?.toString() ?? 'Reglamentos no encontrados');
+        throw Exception(
+          errorBody?['detail']?.toString() ?? 'Reglamentos no encontrados',
+        );
       } else if (response.statusCode == 401) {
         throw Exception('SESSION_EXPIRED');
       } else if (response.statusCode == 500) {
         throw Exception('Error de procesamiento en el servidor');
       } else {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
-        throw Exception(errorBody?['detail']?.toString() ?? 'Error al obtener reglamentos. Código: ${response.statusCode}');
+        throw Exception(
+          errorBody?['detail']?.toString() ??
+              'Error al obtener reglamentos. Código: ${response.statusCode}',
+        );
       }
     } catch (e) {
       if (e.toString().contains('SESSION_EXPIRED')) {
@@ -340,20 +320,10 @@ class DocumentService {
   /// GET /api/v1/vacaciones/avisos-empresa
   /// La API devuelve { "items": [ {...}, {...} ] }.
   Future<List<Map<String, dynamic>>> obtenerAvisos() async {
-    final token = await _getAccessToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('No hay token de autenticación');
-    }
-
-    final url = Uri.parse('$baseUrlNuevo/vacaciones/avisos-empresa');
-
     try {
-      final response = await http.get(
-        url,
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.get(
+        '/vacaciones/avisos-empresa',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -380,14 +350,19 @@ class DocumentService {
         return list;
       } else if (response.statusCode == 404) {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
-        throw Exception(errorBody?['detail']?.toString() ?? 'Avisos no encontrados');
+        throw Exception(
+          errorBody?['detail']?.toString() ?? 'Avisos no encontrados',
+        );
       } else if (response.statusCode == 401) {
         throw Exception('SESSION_EXPIRED');
       } else if (response.statusCode == 500) {
         throw Exception('Error de procesamiento en el servidor');
       } else {
         final errorBody = json.decode(response.body) as Map<String, dynamic>?;
-        throw Exception(errorBody?['detail']?.toString() ?? 'Error al obtener avisos. Código: ${response.statusCode}');
+        throw Exception(
+          errorBody?['detail']?.toString() ??
+              'Error al obtener avisos. Código: ${response.statusCode}',
+        );
       }
     } catch (e) {
       if (e.toString().contains('SESSION_EXPIRED')) {

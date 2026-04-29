@@ -1,35 +1,22 @@
 // lib/data/services/vacaciones_permisos_service.dart
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/solicitud_model.dart';
 import '../models/saldo_vacaciones_model.dart';
 import '../models/trabajador_model.dart';
+import '../../core/network/api_client.dart';
 
 class VacacionesPermisosService {
   // URL del servidor de producción
   // Nota: 10.0.2.2 es la IP especial del emulador Android para acceder al localhost del host
   // Para pruebas locales, usar: http://10.0.2.2:8000/api/v1
-  final String baseUrl = 'http://170.231.171.118:9096/api/v1';
-
-  // Método auxiliar para obtener el token de autenticación
-  Future<String?> _getAuthToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('access_token');
-  }
+  final String baseUrl = 'http://170.231.171.118:9098/api/v1';
 
   // Método auxiliar para obtener el nombre de usuario del token
   Future<String?> _getUsuarioFromToken() async {
     try {
-      final token = await _getAuthToken();
-      if (token == null) return null;
-
-      final response = await http.get(
-        Uri.parse('$baseUrl/auth/me/'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.get(
+        '/auth/me/',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -40,21 +27,6 @@ class VacacionesPermisosService {
     } catch (e) {
       return null;
     }
-  }
-
-  Future<Map<String, String>> _getHeaders({bool includeAuth = true}) async {
-    final headers = <String, String>{
-      'Content-Type': 'application/json; charset=UTF-8',
-    };
-
-    if (includeAuth) {
-      final token = await _getAuthToken();
-      if (token != null) {
-        headers['Authorization'] = 'Bearer $token';
-      }
-    }
-
-    return headers;
   }
 
   // ============================================
@@ -90,9 +62,9 @@ class VacacionesPermisosService {
           'usuario_registro': usuarioRegistro,
       };
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/vacaciones/solicitar'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.post(
+        '/vacaciones/solicitar',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode(body),
       );
 
@@ -119,7 +91,10 @@ class VacacionesPermisosService {
         queryParameters: {'page': page.toString(), 'limit': limit.toString()},
       );
 
-      final response = await http.get(uri, headers: await _getHeaders());
+      final response = await ApiClient.get(
+        '/vacaciones/mis-solicitudes?${uri.query}',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
+      );
 
       if (response.statusCode == 401) {
         throw Exception('SESSION_EXPIRED');
@@ -184,9 +159,9 @@ class VacacionesPermisosService {
   /// Obtener detalle de una solicitud
   Future<SolicitudModel> obtenerSolicitud(int idSolicitud) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/vacaciones/solicitud/$idSolicitud'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.get(
+        '/vacaciones/solicitud/$idSolicitud',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
       );
 
       if (response.statusCode == 200) {
@@ -202,9 +177,9 @@ class VacacionesPermisosService {
   /// Obtener el conteo de solicitudes pendientes de aprobar
   Future<int> obtenerConteoPendientesAprobar() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/vacaciones/pendientes-aprobar'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.get(
+        '/vacaciones/pendientes-aprobar',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
       );
 
       if (response.statusCode == 200) {
@@ -236,9 +211,9 @@ class VacacionesPermisosService {
   /// Obtener el conteo de solicitudes de permisos pendientes de aprobar (filtra por tipo_solicitud: "P")
   Future<int> obtenerConteoPendientesPermisos() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/vacaciones/pendientes-aprobar'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.get(
+        '/vacaciones/pendientes-aprobar',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
       );
 
       if (response.statusCode == 200) {
@@ -278,9 +253,9 @@ class VacacionesPermisosService {
   /// Obtener el conteo de solicitudes de vacaciones pendientes de aprobar (filtra por tipo_solicitud: "V")
   Future<int> obtenerConteoPendientesVacaciones() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/vacaciones/pendientes-aprobar'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.get(
+        '/vacaciones/pendientes-aprobar',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
       );
 
       if (response.statusCode == 200) {
@@ -321,9 +296,9 @@ class VacacionesPermisosService {
   /// El endpoint devuelve un array con información de aprobación y solicitud combinada
   Future<List<SolicitudModel>> pendientesAprobar() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/vacaciones/pendientes-aprobar'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.get(
+        '/vacaciones/pendientes-aprobar',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
       );
 
       if (response.statusCode == 401) {
@@ -338,7 +313,8 @@ class VacacionesPermisosService {
           // El endpoint devuelve objetos con aprobación + solicitud; incluye nombre_trabajador
           return decoded.map((item) {
             final map = item is Map ? item : <String, dynamic>{};
-            final nombreTrab = map['nombre_trabajador'] ?? map['nombreTrabajador'];
+            final nombreTrab =
+                map['nombre_trabajador'] ?? map['nombreTrabajador'];
             return SolicitudModel(
               idSolicitud: map['id_solicitud'] ?? map['idSolicitud'],
               tipoSolicitud:
@@ -359,7 +335,9 @@ class VacacionesPermisosService {
               motivo: map['motivo'],
               estado:
                   'P', // Las solicitudes pendientes siempre están en estado 'P'
-              nombreTrabajador: nombreTrab != null ? nombreTrab.toString().trim() : null,
+              nombreTrabajador: nombreTrab != null
+                  ? nombreTrab.toString().trim()
+                  : null,
               nombrePermiso: map['nombre_permiso'] ?? map['nombrePermiso'],
               aprobaciones: [
                 AprobacionModel(
@@ -405,7 +383,8 @@ class VacacionesPermisosService {
                 observacion: item['observacion'],
                 motivo: item['motivo'],
                 estado: 'P',
-                nombreTrabajador: item['nombre_trabajador'] ?? item['nombreTrabajador'],
+                nombreTrabajador:
+                    item['nombre_trabajador'] ?? item['nombreTrabajador'],
                 nombrePermiso: item['nombre_permiso'] ?? item['nombrePermiso'],
                 aprobaciones: [
                   AprobacionModel(
@@ -458,9 +437,9 @@ class VacacionesPermisosService {
     String? ipDispositivo,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/vacaciones/aprobar/$idSolicitud'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.post(
+        '/vacaciones/aprobar/$idSolicitud',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode({
           'observacion': observacion ?? '',
           'ip_dispositivo': ipDispositivo ?? '',
@@ -485,9 +464,9 @@ class VacacionesPermisosService {
     String? ipDispositivo,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/vacaciones/rechazar/$idSolicitud'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.post(
+        '/vacaciones/rechazar/$idSolicitud',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode({
           'observacion': observacion,
           'ip_dispositivo': ipDispositivo ?? '',
@@ -508,9 +487,9 @@ class VacacionesPermisosService {
   /// Obtener aprobaciones de una solicitud
   Future<List<AprobacionModel>> obtenerAprobaciones(int idSolicitud) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/vacaciones/aprobaciones/$idSolicitud'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.get(
+        '/vacaciones/aprobaciones/$idSolicitud',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
       );
 
       if (response.statusCode == 401) {
@@ -564,9 +543,9 @@ class VacacionesPermisosService {
   /// Obtener saldo de vacaciones
   Future<SaldoVacacionesModel> obtenerMiSaldo() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/vacaciones/mi-saldo'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.get(
+        '/vacaciones/mi-saldo',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
       );
 
       if (response.statusCode == 200) {
@@ -582,9 +561,9 @@ class VacacionesPermisosService {
   /// Obtener cat?logos (tipos de permiso, etc.)
   Future<Map<String, dynamic>> obtenerCatalogos() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/vacaciones/catalogos'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.get(
+        '/vacaciones/catalogos',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
       );
 
       if (response.statusCode == 200) {
@@ -634,11 +613,9 @@ class VacacionesPermisosService {
           'usuario_registro': usuarioRegistro,
       };
 
-      final response = await http.post(
-        Uri.parse(
-          '$baseUrl/vacaciones/solicitar',
-        ), // Mismo endpoint, diferente tipo
-        headers: await _getHeaders(),
+      final response = await ApiClient.post(
+        '/vacaciones/solicitar', // Mismo endpoint, diferente tipo
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode(body),
       );
 
@@ -710,7 +687,10 @@ class VacacionesPermisosService {
         '$baseUrl/vacaciones/trabajadores',
       ).replace(queryParameters: queryParams);
 
-      final response = await http.get(uri, headers: await _getHeaders());
+      final response = await ApiClient.get(
+        '/vacaciones/trabajadores?${uri.query}',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
+      );
 
       if (response.statusCode == 200) {
         return TrabajadoresResponse.fromJson(json.decode(response.body));
@@ -768,7 +748,10 @@ class VacacionesPermisosService {
         '$baseUrl/vacaciones/cumpleanos-hoy',
       ).replace(queryParameters: queryParams);
 
-      final response = await http.get(uri, headers: await _getHeaders());
+      final response = await ApiClient.get(
+        '/vacaciones/cumpleanos-hoy?${uri.query}',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
+      );
 
       if (response.statusCode == 200) {
         return TrabajadoresResponse.fromJson(json.decode(response.body));
@@ -803,9 +786,9 @@ class VacacionesPermisosService {
         if (versionSo != null) 'version_so': versionSo,
       };
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/notificaciones/registrar-token'),
-        headers: await _getHeaders(),
+      final response = await ApiClient.post(
+        '/notificaciones/registrar-token',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode(body),
       );
 
@@ -813,7 +796,9 @@ class VacacionesPermisosService {
         print('Token FCM registrado exitosamente para $codigoTrabajador');
       } else {
         final errorBody = json.decode(response.body);
-        print('Error al registrar token: ${errorBody['detail'] ?? response.statusCode}');
+        print(
+          'Error al registrar token: ${errorBody['detail'] ?? response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error al registrar token FCM: $e');

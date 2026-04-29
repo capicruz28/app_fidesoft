@@ -5,12 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../models/auth_token_model.dart';
 import '../models/user_profile_model.dart';
+import '../../core/auth/token_storage.dart';
+import '../../core/network/api_client.dart';
 
 class AuthService {
   // URL del servidor de producción
   // Nota: 10.0.2.2 es la IP especial del emulador Android para acceder al localhost del host
   // Para pruebas locales, usar: http://10.0.2.2:8000/api/v1
-  final String baseUrlNuevo = 'http://170.231.171.118:9096/api/v1';
+  final String baseUrlNuevo = 'http://170.231.171.118:9098/api/v1';
 
   /// Login - Usa el nuevo endpoint OAuth2
   Future<UserModel> login({
@@ -33,28 +35,38 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final tokenModel = authTokenModelFromJson(response.body);
-        
-        // Guardar el token en SharedPreferences
+
+        // Guardar tokens según contrato:
+        // - access_token: memoria (y persistimos para auto-login)
+        // - refresh_token: secure storage
+        await TokenStorage.setAccessToken(tokenModel.accessToken);
+        await TokenStorage.setRefreshToken(tokenModel.refreshToken);
+
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('access_token', tokenModel.accessToken);
         await prefs.setString('token_type', tokenModel.tokenType);
-        
+
         // Guardar los roles del usuario si están disponibles
         if (tokenModel.userData?.roles != null) {
           await prefs.setStringList('user_roles', tokenModel.userData!.roles!);
         }
         // Guardar correo del usuario si está disponible
-        if (tokenModel.userData?.correo != null && tokenModel.userData!.correo!.isNotEmpty) {
+        if (tokenModel.userData?.correo != null &&
+            tokenModel.userData!.correo!.isNotEmpty) {
           await prefs.setString('user_email', tokenModel.userData!.correo!);
         }
-        
+
         // Convertir la respuesta del nuevo endpoint al formato UserModel
         // Si hay datos del usuario en la respuesta, usarlos
         if (tokenModel.userData != null) {
           return UserModel(
             strMensaje: '', // Sin mensaje = éxito
-            strDato1: tokenModel.userData!.codigoTrabajadorExterno ?? tokenModel.userData!.nombreUsuario ?? cusuar,
-            strDato2: '${tokenModel.userData!.nombre ?? ''} ${tokenModel.userData!.apellido ?? ''}'.trim(),
+            strDato1:
+                tokenModel.userData!.codigoTrabajadorExterno ??
+                tokenModel.userData!.nombreUsuario ??
+                cusuar,
+            strDato2:
+                '${tokenModel.userData!.nombre ?? ''} ${tokenModel.userData!.apellido ?? ''}'
+                    .trim(),
             strDato3: tokenModel.userData!.usuarioId?.toString() ?? '0',
             intDato4: tokenModel.userData!.usuarioId ?? 0,
           );
@@ -66,7 +78,10 @@ class AuthService {
         throw Exception('Credenciales inválidas');
       } else {
         final errorBody = json.decode(response.body);
-        throw Exception(errorBody['detail'] ?? 'Error al autenticar. Código: ${response.statusCode}');
+        throw Exception(
+          errorBody['detail'] ??
+              'Error al autenticar. Código: ${response.statusCode}',
+        );
       }
     } catch (e) {
       throw Exception('Error de conexión: $e');
@@ -76,17 +91,15 @@ class AuthService {
   /// Obtener datos del usuario autenticado usando el token
   Future<UserModel> _obtenerDatosUsuario(String accessToken) async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrlNuevo/auth/me/'),
-        headers: <String, String>{
-          'Authorization': 'Bearer $accessToken',
-          'Content-Type': 'application/json',
-        },
+      await TokenStorage.setAccessToken(accessToken);
+      final response = await ApiClient.get(
+        '/auth/me/',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
         final userData = UserData.fromJson(json.decode(response.body));
-        
+
         // Guardar los roles del usuario si están disponibles
         final prefs = await SharedPreferences.getInstance();
         if (userData.roles != null) {
@@ -96,11 +109,13 @@ class AuthService {
         if (userData.correo != null && userData.correo!.isNotEmpty) {
           await prefs.setString('user_email', userData.correo!);
         }
-        
+
         return UserModel(
           strMensaje: '',
-          strDato1: userData.codigoTrabajadorExterno ?? userData.nombreUsuario ?? '',
-          strDato2: '${userData.nombre ?? ''} ${userData.apellido ?? ''}'.trim(),
+          strDato1:
+              userData.codigoTrabajadorExterno ?? userData.nombreUsuario ?? '',
+          strDato2: '${userData.nombre ?? ''} ${userData.apellido ?? ''}'
+              .trim(),
           strDato3: userData.usuarioId?.toString() ?? '0',
           intDato4: userData.usuarioId ?? 0,
         );
@@ -114,8 +129,7 @@ class AuthService {
 
   /// Obtener el token guardado
   Future<String?> getAccessToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('access_token');
+    return TokenStorage.getAccessToken();
   }
 
   /// Guardar credenciales para "Recordarme"
@@ -135,21 +149,17 @@ class AuthService {
   Future<Map<String, String>?> getSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     final rememberMe = prefs.getBool('remember_me') ?? false;
-    
+
     if (!rememberMe) return null;
-    
+
     final ruc = prefs.getString('saved_ruc');
     final usuario = prefs.getString('saved_usuario');
     final clave = prefs.getString('saved_clave');
-    
+
     if (ruc != null && usuario != null && clave != null) {
-      return {
-        'ruc': ruc,
-        'usuario': usuario,
-        'clave': clave,
-      };
+      return {'ruc': ruc, 'usuario': usuario, 'clave': clave};
     }
-    
+
     return null;
   }
 
@@ -170,28 +180,27 @@ class AuthService {
         return null;
       }
 
-      // Verificar si el token es válido haciendo una llamada a /auth/me/
-      final response = await http.get(
-        Uri.parse('$baseUrlNuevo/auth/me/'),
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      // Verificar/renovar sesión automáticamente usando ApiClient (refresh + retry)
+      final response = await ApiClient.get(
+        '/auth/me/',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
         final userData = UserData.fromJson(json.decode(response.body));
-        
+
         // Guardar correo del usuario si está disponible
         final prefs = await SharedPreferences.getInstance();
         if (userData.correo != null && userData.correo!.isNotEmpty) {
           await prefs.setString('user_email', userData.correo!);
         }
-        
+
         return UserModel(
           strMensaje: '',
-          strDato1: userData.codigoTrabajadorExterno ?? userData.nombreUsuario ?? '',
-          strDato2: '${userData.nombre ?? ''} ${userData.apellido ?? ''}'.trim(),
+          strDato1:
+              userData.codigoTrabajadorExterno ?? userData.nombreUsuario ?? '',
+          strDato2: '${userData.nombre ?? ''} ${userData.apellido ?? ''}'
+              .trim(),
           strDato3: userData.usuarioId?.toString() ?? '0',
           intDato4: userData.usuarioId ?? 0,
         );
@@ -210,34 +219,38 @@ class AuthService {
 
   /// Limpiar el token (logout)
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('access_token');
-    await prefs.remove('token_type');
-    await prefs.remove('user_roles');
-    // NO limpiar credenciales guardadas aquí, solo se limpian si el usuario desmarca "Recordarme"
+    final refreshToken = await TokenStorage.getRefreshToken();
+    try {
+      await http.post(
+        Uri.parse('$baseUrlNuevo/auth/logout/'),
+        headers: const <String, String>{
+          'Content-Type': 'application/json',
+        },
+        body: refreshToken != null && refreshToken.isNotEmpty
+            ? jsonEncode({'refresh_token': refreshToken})
+            : null,
+      );
+    } catch (_) {
+      // Ignorar errores de red al cerrar sesión; igual limpiamos localmente.
+    } finally {
+      await TokenStorage.clearAllTokens();
+      // NO limpiar credenciales guardadas aquí, solo se limpian si el usuario desmarca "Recordarme"
+    }
   }
-  
+
   /// Verificar si el usuario tiene un rol específico
   static Future<bool> tieneRol(String rol) async {
     final prefs = await SharedPreferences.getInstance();
     final roles = prefs.getStringList('user_roles') ?? [];
     return roles.contains(rol);
   }
-  
+
   /// Obtener perfil completo del usuario autenticado
   Future<UserProfileModel> obtenerPerfilUsuario() async {
     try {
-      final token = await getAccessToken();
-      if (token == null || token.isEmpty) {
-        throw Exception('No hay token de autenticación');
-      }
-
-      final response = await http.get(
-        Uri.parse('$baseUrlNuevo/auth/me/'),
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.get(
+        '/auth/me/',
+        headers: const {'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -246,7 +259,9 @@ class AuthService {
         throw Exception('SESSION_EXPIRED');
       } else {
         final errorBody = json.decode(response.body);
-        throw Exception(errorBody['detail'] ?? 'Error al obtener perfil del usuario');
+        throw Exception(
+          errorBody['detail'] ?? 'Error al obtener perfil del usuario',
+        );
       }
     } catch (e) {
       throw Exception('Error al obtener perfil del usuario: $e');
@@ -259,17 +274,9 @@ class AuthService {
     required String nuevaContrasena,
   }) async {
     try {
-      final token = await getAccessToken();
-      if (token == null || token.isEmpty) {
-        throw Exception('No hay token de autenticación');
-      }
-
-      final response = await http.post(
-        Uri.parse('$baseUrlNuevo/auth/change-password/'),
-        headers: <String, String>{
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.post(
+        '/auth/change-password/',
+        headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
           'contrasena_actual': contrasenaActual,
           'nueva_contrasena': nuevaContrasena,
@@ -282,10 +289,15 @@ class AuthService {
         throw Exception('SESSION_EXPIRED');
       } else if (response.statusCode == 400) {
         final errorBody = json.decode(response.body);
-        throw Exception(errorBody['detail'] ?? 'La contraseña actual es incorrecta');
+        throw Exception(
+          errorBody['detail'] ?? 'La contraseña actual es incorrecta',
+        );
       } else if (response.statusCode == 422) {
         final errorBody = json.decode(response.body);
-        throw Exception(errorBody['detail'] ?? 'La nueva contraseña no cumple con los requisitos');
+        throw Exception(
+          errorBody['detail'] ??
+              'La nueva contraseña no cumple con los requisitos',
+        );
       } else {
         final errorBody = json.decode(response.body);
         throw Exception(errorBody['detail'] ?? 'Error al cambiar contraseña');
@@ -315,26 +327,19 @@ class AuthService {
   /// Verificar si el usuario es aprobador usando el endpoint específico
   static Future<bool> esAprobador() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = await prefs.getString('access_token');
-      
+      final token = await TokenStorage.getAccessToken();
+
       if (token == null) {
         print('No hay token de autenticación');
         return false;
       }
-      
-      // Crear instancia para acceder a baseUrlNuevo
-      final authService = AuthService();
-      
+
       // Usar el endpoint específico para verificar si es aprobador
-      final response = await http.get(
-        Uri.parse('${authService.baseUrlNuevo}/vacaciones/verificar-aprobador'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+      final response = await ApiClient.get(
+        '/vacaciones/verificar-aprobador',
+        headers: const {'Content-Type': 'application/json'},
       );
-      
+
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
         final esAprobador = decoded['es_aprobador'] ?? false;
