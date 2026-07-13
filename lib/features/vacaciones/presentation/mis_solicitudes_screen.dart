@@ -2,11 +2,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/theme/module_theme.dart';
 import '../../../../data/services/vacaciones_permisos_service.dart';
 import '../../../../data/services/auth_service.dart';
 import '../../../../data/models/solicitud_model.dart';
 import '../../../../core/providers/user_provider.dart';
 import 'detalle_solicitud_screen.dart';
+import 'anular_solicitud_dialog.dart';
 
 class MisSolicitudesScreen extends StatefulWidget {
   final String tipo; // 'V' para vacaciones, 'P' para permisos, 'T' para todos
@@ -64,6 +66,10 @@ class _MisSolicitudesScreenState extends State<MisSolicitudesScreen> {
             fechaInicio: solicitud.fechaInicio,
             fechaFin: solicitud.fechaFin,
             diasSolicitados: solicitud.diasSolicitados,
+            tiempo: solicitud.tiempo,
+            horaInicio: solicitud.horaInicio,
+            horaFin: solicitud.horaFin,
+            horasSolicitadas: solicitud.horasSolicitadas,
             observacion: solicitud.observacion,
             motivo: solicitud.motivo,
             estado: solicitud.estado,
@@ -134,8 +140,60 @@ class _MisSolicitudesScreenState extends State<MisSolicitudesScreen> {
     }
   }
 
+  Future<void> _mostrarDialogoAnular(SolicitudModel solicitud, int index) async {
+    if (solicitud.idSolicitud == null) return;
+
+    final solicitudActualizada = await showDialog<SolicitudModel>(
+      context: context,
+      builder: (context) => AnularSolicitudDialog(solicitud: solicitud),
+    );
+
+    if (solicitudActualizada != null && mounted) {
+      setState(() {
+        _solicitudes[index] = SolicitudModel(
+          idSolicitud: solicitudActualizada.idSolicitud,
+          tipoSolicitud: solicitudActualizada.tipoSolicitud,
+          codigoPermiso: solicitudActualizada.codigoPermiso,
+          codigoTrabajador: solicitudActualizada.codigoTrabajador,
+          fechaInicio: solicitudActualizada.fechaInicio,
+          fechaFin: solicitudActualizada.fechaFin,
+          diasSolicitados: solicitudActualizada.diasSolicitados,
+          tiempo: solicitudActualizada.tiempo,
+          horaInicio: solicitudActualizada.horaInicio,
+          horaFin: solicitudActualizada.horaFin,
+          horasSolicitadas: solicitudActualizada.horasSolicitadas,
+          observacion: solicitudActualizada.observacion,
+          motivo: solicitudActualizada.motivo,
+          estado: solicitudActualizada.estado,
+          fechaRegistro: solicitudActualizada.fechaRegistro,
+          usuarioRegistro: solicitudActualizada.usuarioRegistro,
+          fechaModificacion: solicitudActualizada.fechaModificacion,
+          usuarioModificacion: solicitudActualizada.usuarioModificacion,
+          fechaAnulacion: solicitudActualizada.fechaAnulacion,
+          usuarioAnulacion: solicitudActualizada.usuarioAnulacion,
+          motivoAnulacion: solicitudActualizada.motivoAnulacion,
+          nombreTrabajador: solicitudActualizada.nombreTrabajador,
+          nombrePermiso: solicitudActualizada.nombrePermiso,
+          aprobaciones: solicitud.aprobaciones,
+        );
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Solicitud anulada correctamente'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final primaryColor = ModuleTheme.resolvePrimaryColor(
+      context,
+      fallback: ModuleTheme.primaryForTipo(widget.tipo),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -145,7 +203,7 @@ class _MisSolicitudesScreenState extends State<MisSolicitudesScreen> {
                   ? 'Mis Permisos'
                   : 'Mis Solicitudes',
         ),
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -200,14 +258,18 @@ class _MisSolicitudesScreenState extends State<MisSolicitudesScreen> {
                         itemCount: _solicitudes.length,
                         itemBuilder: (context, index) {
                           final solicitud = _solicitudes[index];
-                          return _buildSolicitudCard(solicitud);
+                          return _buildSolicitudCard(solicitud, primaryColor, index);
                         },
                       ),
                     ),
     );
   }
 
-  Widget _buildSolicitudCard(SolicitudModel solicitud) {
+  Widget _buildSolicitudCard(
+    SolicitudModel solicitud,
+    Color primaryColor,
+    int index,
+  ) {
     final estadoColor = _getEstadoColor(solicitud.estado);
     final estadoIcon = _getEstadoIcon(solicitud.estado);
 
@@ -221,6 +283,7 @@ class _MisSolicitudesScreenState extends State<MisSolicitudesScreen> {
             MaterialPageRoute(
               builder: (context) => DetalleSolicitudScreen(
                 solicitud: solicitud,
+                primaryColor: primaryColor,
               ),
             ),
           );
@@ -233,61 +296,94 @@ class _MisSolicitudesScreenState extends State<MisSolicitudesScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header con tipo y estado
+              // Header con tipo, acción anular y estado
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        solicitud.tipoSolicitud == 'V'
-                            ? Icons.beach_access
-                            : Icons.event_available,
-                        color: Theme.of(context).primaryColor,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        solicitud.tipoSolicitudTexto,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      if (solicitud.nombrePermiso != null) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          '- ${solicitud.nombrePermiso}',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: estadoColor.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: estadoColor, width: 1),
-                    ),
+                  Expanded(
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(estadoIcon, size: 16, color: estadoColor),
-                        const SizedBox(width: 4),
-                        Text(
-                          solicitud.estadoTexto,
-                          style: TextStyle(
-                            color: estadoColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                        Icon(
+                          solicitud.tipoSolicitud == 'V'
+                              ? Icons.beach_access
+                              : Icons.event_available,
+                          color: primaryColor,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            solicitud.tipoSolicitudTexto,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (solicitud.nombrePermiso != null) ...[
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              '- ${solicitud.nombrePermiso}',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (solicitud.estaPendiente)
+                        IconButton(
+                          onPressed: () =>
+                              _mostrarDialogoAnular(solicitud, index),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          iconSize: 20,
+                          tooltip: 'Anular solicitud',
+                          icon: Icon(
+                            Icons.cancel_outlined,
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: estadoColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: estadoColor, width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(estadoIcon, size: 16, color: estadoColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              solicitud.estadoTexto,
+                              style: TextStyle(
+                                color: estadoColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -299,21 +395,51 @@ class _MisSolicitudesScreenState extends State<MisSolicitudesScreen> {
                   Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 8),
                   Text(
-                    '${DateFormat('dd/MM/yyyy', 'es').format(solicitud.fechaInicio)} - ${DateFormat('dd/MM/yyyy', 'es').format(solicitud.fechaFin)}',
+                    solicitud.esPorHoras
+                        ? DateFormat('dd/MM/yyyy', 'es')
+                            .format(solicitud.fechaInicio)
+                        : '${DateFormat('dd/MM/yyyy', 'es').format(solicitud.fechaInicio)} - ${DateFormat('dd/MM/yyyy', 'es').format(solicitud.fechaFin)}',
                     style: TextStyle(color: Colors.grey[700]),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              
-              // Días
+
+              // Cantidad (días u horas)
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.calculate, size: 16, color: Colors.grey[600]),
+                  Icon(
+                    solicitud.esPorHoras ? Icons.timelapse : Icons.calculate,
+                    size: 16,
+                    color: Colors.grey[600],
+                  ),
                   const SizedBox(width: 8),
-                  Text(
-                    '${solicitud.diasSolicitados?.toStringAsFixed(1) ?? '0'} días',
-                    style: TextStyle(color: Colors.grey[700]),
+                  Expanded(
+                    child: solicitud.esPorHoras
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${solicitud.horasSolicitadas?.toStringAsFixed(0) ?? '0'} horas',
+                                style: TextStyle(color: Colors.grey[700]),
+                              ),
+                              if (solicitud.rangoHorario != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  solicitud.rangoHorario!,
+                                  style: TextStyle(
+                                    color: Colors.grey[500],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          )
+                        : Text(
+                            '${solicitud.diasSolicitados?.toStringAsFixed(1) ?? '0'} días',
+                            style: TextStyle(color: Colors.grey[700]),
+                          ),
                   ),
                 ],
               ),

@@ -12,6 +12,10 @@ class SolicitudModel {
   final DateTime fechaInicio;
   final DateTime fechaFin;
   final double? diasSolicitados;
+  final String? tiempo; // 'D' = Días, 'H' = Horas (permisos)
+  final String? horaInicio; // Formato "HH:mm"
+  final String? horaFin; // Formato "HH:mm"
+  final double? horasSolicitadas;
   final String? observacion;
   final String? motivo;
   final String estado; // 'P' = Pendiente, 'A' = Aprobado, 'R' = Rechazado, 'N' = Anulado
@@ -36,6 +40,10 @@ class SolicitudModel {
     required this.fechaInicio,
     required this.fechaFin,
     this.diasSolicitados,
+    this.tiempo,
+    this.horaInicio,
+    this.horaFin,
+    this.horasSolicitadas,
     this.observacion,
     this.motivo,
     required this.estado,
@@ -66,7 +74,13 @@ class SolicitudModel {
             : json["fechaFin"] != null
                 ? DateTime.parse(json["fechaFin"])
                 : DateTime.now(),
-        diasSolicitados: json["dias_solicitados"]?.toDouble() ?? json["diasSolicitados"]?.toDouble(),
+        diasSolicitados: json["dias_solicitados"]?.toDouble() ??
+            json["diasSolicitados"]?.toDouble(),
+        tiempo: json["tiempo"]?.toString().toUpperCase(),
+        horaInicio: json["hora_inicio"]?.toString() ?? json["horaInicio"]?.toString(),
+        horaFin: json["hora_fin"]?.toString() ?? json["horaFin"]?.toString(),
+        horasSolicitadas: json["horas_solicitadas"]?.toDouble() ??
+            json["horasSolicitadas"]?.toDouble(),
         observacion: json["observacion"],
         motivo: json["motivo"],
         estado: json["estado"] ?? "P",
@@ -90,7 +104,9 @@ class SolicitudModel {
         usuarioAnulacion: json["usuario_anulacion"] ?? json["usuarioAnulacion"],
         motivoAnulacion: json["motivo_anulacion"] ?? json["motivoAnulacion"],
         nombreTrabajador: json["nombre_trabajador"] ?? json["nombreTrabajador"],
-        nombrePermiso: json["nombre_permiso"] ?? json["nombrePermiso"],
+        nombrePermiso: json["nombre_permiso"] ??
+            json["nombrePermiso"] ??
+            json["descripcion_permiso"],
         aprobaciones: json["aprobaciones"] != null
             ? List<AprobacionModel>.from(
                 json["aprobaciones"].map((x) => AprobacionModel.fromJson(x)))
@@ -104,6 +120,10 @@ class SolicitudModel {
         "fecha_inicio": fechaInicio.toIso8601String().split('T')[0],
         "fecha_fin": fechaFin.toIso8601String().split('T')[0],
         "dias_solicitados": diasSolicitados,
+        if (tiempo != null) "tiempo": tiempo,
+        if (horaInicio != null) "hora_inicio": horaInicio,
+        if (horaFin != null) "hora_fin": horaFin,
+        if (horasSolicitadas != null) "horas_solicitadas": horasSolicitadas,
         "observacion": observacion,
         "motivo": motivo,
       };
@@ -132,6 +152,23 @@ class SolicitudModel {
   bool get estaAprobado => estado == 'A';
   bool get estaRechazado => estado == 'R';
   bool get estaAnulado => estado == 'N';
+
+  bool get esPorHoras => tipoSolicitud == 'P' && tiempo == 'H';
+
+  String get cantidadTexto {
+    if (esPorHoras) {
+      return '${horasSolicitadas?.toStringAsFixed(0) ?? '0'} horas';
+    }
+    return '${diasSolicitados?.toStringAsFixed(1) ?? '0'} días';
+  }
+
+  String? get rangoHorario {
+    if (horaInicio == null || horaFin == null) return null;
+    final inicio =
+        horaInicio!.length >= 5 ? horaInicio!.substring(0, 5) : horaInicio;
+    final fin = horaFin!.length >= 5 ? horaFin!.substring(0, 5) : horaFin;
+    return '$inicio - $fin';
+  }
 }
 
 // Modelo para Aprobación

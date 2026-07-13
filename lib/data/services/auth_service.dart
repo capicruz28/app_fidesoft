@@ -7,13 +7,9 @@ import '../models/auth_token_model.dart';
 import '../models/user_profile_model.dart';
 import '../../core/auth/token_storage.dart';
 import '../../core/network/api_client.dart';
+import '../../core/config/app_config.dart';
 
 class AuthService {
-  // URL del servidor de producción
-  // Nota: 10.0.2.2 es la IP especial del emulador Android para acceder al localhost del host
-  // Para pruebas locales, usar: http://10.0.2.2:8000/api/v1
-  final String baseUrlNuevo = 'http://170.231.171.118:9098/api/v1';
-
   /// Login - Usa el nuevo endpoint OAuth2
   Future<UserModel> login({
     required String ruc,
@@ -23,7 +19,7 @@ class AuthService {
     try {
       // El endpoint usa OAuth2PasswordRequestForm con form-urlencoded
       final response = await http.post(
-        Uri.parse('$baseUrlNuevo/auth/login/'),
+        Uri.parse('${AppConfig().baseUrl}/auth/login/'),
         headers: <String, String>{
           'Content-Type': 'application/x-www-form-urlencoded',
         },
@@ -222,7 +218,7 @@ class AuthService {
     final refreshToken = await TokenStorage.getRefreshToken();
     try {
       await http.post(
-        Uri.parse('$baseUrlNuevo/auth/logout/'),
+        Uri.parse('${AppConfig().baseUrl}/auth/logout/'),
         headers: const <String, String>{
           'Content-Type': 'application/json',
         },

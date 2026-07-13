@@ -6,6 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../data/services/auth_service.dart';
 import '../../../core/providers/user_provider.dart'; // Importamos el provider
 import '../../../core/services/notification_service.dart'; // Para registrar token FCM
+import '../../../core/config/app_config.dart';
+import '../../../core/config/connection_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,6 +26,26 @@ class _LoginScreenState extends State<LoginScreen> {
   final AuthService _authService = AuthService();
   bool _isLoading = false;
   bool _rememberMe = false;
+
+  void _showBlockingLoader(String message) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+              height: 22,
+              width: 22,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
+            const SizedBox(width: 16),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -66,6 +88,17 @@ class _LoginScreenState extends State<LoginScreen> {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
     try {
+      // Paso previo: obtener baseUrl dinámica del cliente (servidor central)
+      _showBlockingLoader('Verificando cliente...');
+      final baseUrlCliente = await ConnectionService().obtenerBaseUrl(ruc);
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      AppConfig().setBaseUrl(baseUrlCliente);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('base_url_cliente', baseUrlCliente);
+
       final userModel = await _authService.login(
         ruc: ruc, 
         cusuar: usuario, 
@@ -90,7 +123,6 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         
         // Obtener correo del usuario desde SharedPreferences (ya se guardó en el login)
-        final prefs = await SharedPreferences.getInstance();
         final userEmail = prefs.getString('user_email');
         
         // 1. Guardar los datos del usuario, RUC y correo en el Provider
@@ -101,6 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (codigoTrabajador.isNotEmpty) {
           await NotificationService.registerTokenAfterLogin(codigoTrabajador);
         }
+        if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -121,6 +154,12 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
           if (!mounted) return; // 👈 evita usar context si ya no está montado
+        // Cerrar loader si quedó abierto
+        try {
+          if (Navigator.of(context, rootNavigator: true).canPop()) {
+            Navigator.of(context, rootNavigator: true).pop();
+          }
+        } catch (_) {}
         //print("🧩 ERROR DE LOGIN ---> $e"); // 👈 mostrará el error completo en flutter logs
 
         ScaffoldMessenger.of(context).showSnackBar(

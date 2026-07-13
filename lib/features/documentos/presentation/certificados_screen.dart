@@ -30,6 +30,26 @@ class _CertificadosScreenState extends State<CertificadosScreen> {
   // Mapa para agrupar certificados por tipo_documento
   Map<String, List<DocumentModel>> _certificatesByType = {};
 
+  String _formatTipoDocumento(String? raw) {
+    final s = (raw ?? '').trim();
+    if (s.isEmpty) return 'Documento';
+    final words = s.split(RegExp(r'\s+')).where((w) => w.trim().isNotEmpty);
+    final formatted = words.map((w) {
+      final lower = w.toLowerCase();
+      // Mantener siglas específicas en mayúscula
+      if (lower == 'cts') return 'CTS';
+      if (lower.length <= 2) return w.toUpperCase();
+      return lower[0].toUpperCase() + lower.substring(1);
+    }).toList();
+    return formatted.join(' ');
+  }
+
+  String _certSubtitle(DocumentModel doc) {
+    final monthName = doc.monthName.trim();
+    if (monthName.isEmpty) return 'Año ${doc.cannos}';
+    return '$monthName ${doc.cannos}';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -67,12 +87,21 @@ class _CertificadosScreenState extends State<CertificadosScreen> {
       for (final resultado in resultados) {
         final nseman = resultado['nseman'] as String? ?? '0';
         final tipoDoc = (resultado['tipo_documento'] ?? '').toString();
-        final mesCts = nseman == '1' ? '05' : (nseman == '2' ? '11' : (resultado['mes'] ?? '12'));
-        final tituloCts = nseman == '1' ? 'Certificado CTS Mayo $_selectedYear' : (nseman == '2' ? 'Certificado CTS Noviembre $_selectedYear' : 'Certificado CTS $_selectedYear');
+        final mesRaw = (resultado['mes'] ?? '').toString().trim();
+        final mesNormalizado = mesRaw.isEmpty ? '' : mesRaw.padLeft(2, '0');
+        final mesDoc = nseman == '1'
+            ? '05'
+            : (nseman == '2' ? '11' : mesNormalizado);
+        // dtpref se usa para el detalle/PDF; el listado se mostrará con tipo_documento
+        final tituloCts = nseman == '1'
+            ? 'Certificado CTS Mayo $_selectedYear'
+            : (nseman == '2'
+                ? 'Certificado CTS Noviembre $_selectedYear'
+                : 'Certificado CTS $_selectedYear');
         final doc = DocumentModel(
           creguc: '',
           cannos: _selectedYear!,
-          cmeses: mesCts,
+          cmeses: mesDoc,
           ctraba: resultado['codigo_trabajador'] ?? '',
           ctpref: 'CTS',
           dtpref: tituloCts,
@@ -138,12 +167,18 @@ class _CertificadosScreenState extends State<CertificadosScreen> {
         if (match != null) {
           final nseman = match['nseman'] as String? ?? '0';
           final tipoDoc = (match['tipo_documento'] ?? '').toString();
-          final mesCts = nseman == '1' ? '05' : (nseman == '2' ? '11' : doc.cmeses);
+          final mesRaw = (match['mes'] ?? '').toString().trim();
+          final mesNormalizado = mesRaw.isEmpty ? '' : mesRaw.padLeft(2, '0');
+          final mesDoc = nseman == '1'
+              ? '05'
+              : (nseman == '2'
+                  ? '11'
+                  : (doc.cmeses.isNotEmpty ? doc.cmeses : mesNormalizado));
           final tituloCts = nseman == '1' ? 'Certificado CTS Mayo ${doc.cannos}' : (nseman == '2' ? 'Certificado CTS Noviembre ${doc.cannos}' : 'Certificado CTS ${doc.cannos}');
           docToShow = DocumentModel(
             creguc: doc.creguc,
             cannos: doc.cannos,
-            cmeses: mesCts,
+            cmeses: mesDoc,
             ctraba: doc.ctraba,
             ctpref: doc.ctpref,
             dtpref: tituloCts,
@@ -319,7 +354,7 @@ class _CertificadosScreenState extends State<CertificadosScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
                 child: Text(
-                  tipoKey,
+                  _formatTipoDocumento(tipoKey),
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -342,13 +377,13 @@ class _CertificadosScreenState extends State<CertificadosScreen> {
                     child: Icon(Icons.description, color: primaryColor, size: 18),
                   ),
                   title: Text(
-                    doc.certificadoCtsDisplayTitle,
+                    _formatTipoDocumento(doc.tipoDocumento),
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   subtitle: Text(
-                    doc.nseman == '1' ? 'Mayo ${doc.cannos}' : (doc.nseman == '2' ? 'Noviembre ${doc.cannos}' : 'Año ${doc.cannos}'),
+                    _certSubtitle(doc),
                     style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -383,13 +418,13 @@ class _CertificadosScreenState extends State<CertificadosScreen> {
               child: Icon(Icons.description, color: primaryColor, size: 18),
             ),
             title: Text(
-              doc.certificadoCtsDisplayTitle,
+              _formatTipoDocumento(doc.tipoDocumento),
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(
-              doc.nseman == '1' ? 'Mayo ${doc.cannos}' : (doc.nseman == '2' ? 'Noviembre ${doc.cannos}' : 'Año ${doc.cannos}'),
+              _certSubtitle(doc),
               style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

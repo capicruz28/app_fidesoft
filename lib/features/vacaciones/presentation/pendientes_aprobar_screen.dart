@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/theme/module_theme.dart';
 import '../../../../data/services/vacaciones_permisos_service.dart';
 import '../../../../data/services/auth_service.dart';
 import '../../../../data/models/solicitud_model.dart';
@@ -55,6 +56,10 @@ class _PendientesAprobarScreenState extends State<PendientesAprobarScreen> {
             fechaInicio: s.fechaInicio,
             fechaFin: s.fechaFin,
             diasSolicitados: s.diasSolicitados,
+            tiempo: s.tiempo,
+            horaInicio: s.horaInicio,
+            horaFin: s.horaFin,
+            horasSolicitadas: s.horasSolicitadas,
             observacion: s.observacion,
             motivo: s.motivo,
             estado: s.estado,
@@ -145,10 +150,15 @@ class _PendientesAprobarScreenState extends State<PendientesAprobarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = ModuleTheme.resolvePrimaryColor(
+      context,
+      fallback: ModuleTheme.primaryForTipo(widget.tipoFiltro ?? 'V'),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pendientes de Aprobar'),
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
@@ -248,7 +258,7 @@ class _PendientesAprobarScreenState extends State<PendientesAprobarScreen> {
                               itemCount: _solicitudesFiltradas.length,
                               itemBuilder: (context, index) {
                                 final solicitud = _solicitudesFiltradas[index];
-                                return _buildSolicitudCard(solicitud);
+                                return _buildSolicitudCard(solicitud, primaryColor);
                               },
                             ),
                           ),
@@ -258,7 +268,7 @@ class _PendientesAprobarScreenState extends State<PendientesAprobarScreen> {
     );
   }
 
-  Widget _buildSolicitudCard(SolicitudModel solicitud) {
+  Widget _buildSolicitudCard(SolicitudModel solicitud, Color primaryColor) {
     // Encontrar el nivel pendiente
     final aprobacionPendiente = solicitud.aprobaciones
         ?.where((a) => a.estaPendiente)
@@ -274,6 +284,7 @@ class _PendientesAprobarScreenState extends State<PendientesAprobarScreen> {
             MaterialPageRoute(
               builder: (context) => DetalleSolicitudScreen(
                 solicitud: solicitud,
+                primaryColor: primaryColor,
               ),
             ),
           );
@@ -296,7 +307,7 @@ class _PendientesAprobarScreenState extends State<PendientesAprobarScreen> {
                         solicitud.tipoSolicitud == 'V'
                             ? Icons.beach_access
                             : Icons.event_available,
-                        color: Theme.of(context).primaryColor,
+                        color: primaryColor,
                         size: 20,
                       ),
                       const SizedBox(width: 8),

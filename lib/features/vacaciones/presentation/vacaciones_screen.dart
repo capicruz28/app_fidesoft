@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/providers/user_provider.dart';
+import '../../../core/theme/module_theme.dart';
 import '../../../data/services/vacaciones_permisos_service.dart';
 
 class VacacionesScreen extends StatefulWidget {
@@ -87,8 +88,12 @@ class _VacacionesScreenState extends State<VacacionesScreen> {
             subtitle: 'Solicita y gestiona las fechas de tus próximas vacaciones.',
             icon: Icons.calendar_month,
             route: '/vacaciones/programacion',
-            color: primaryColor, // Usamos el color pastel en los íconos del tile
+            color: primaryColor,
             accentColor: accentColor,
+            arguments: ModuleTheme.navigationArgs(
+              primaryColor: primaryColor,
+              title: 'Solicitar Vacaciones',
+            ),
           ),
           const SizedBox(height: 15),
 
@@ -99,8 +104,12 @@ class _VacacionesScreenState extends State<VacacionesScreen> {
             subtitle: 'Consulta el estado y el historial de tus solicitudes de vacaciones.',
             icon: Icons.history,
             route: '/vacaciones/reporte',
-            color: primaryColor, // Usamos el color pastel en los íconos del tile
+            color: primaryColor,
             accentColor: accentColor,
+            arguments: ModuleTheme.navigationArgs(
+              primaryColor: primaryColor,
+              title: 'Mis Vacaciones',
+            ),
           ),
           const SizedBox(height: 15),
 
@@ -118,6 +127,10 @@ class _VacacionesScreenState extends State<VacacionesScreen> {
                   color: primaryColor,
                   accentColor: accentColor,
                   badgeCount: _pendientesCount > 0 ? _pendientesCount : null,
+                  arguments: ModuleTheme.navigationArgs(
+                    primaryColor: primaryColor,
+                    title: 'Pendientes de Aprobar',
+                  ),
                 );
               }
               return const SizedBox.shrink();
@@ -136,6 +149,7 @@ class _VacacionesScreenState extends State<VacacionesScreen> {
     required String route, 
     required Color color,
     required Color accentColor,
+    Map<String, dynamic>? arguments,
     int? badgeCount,
   }) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -195,7 +209,7 @@ class _VacacionesScreenState extends State<VacacionesScreen> {
           ],
         ),
         onTap: () async {
-          await Navigator.pushNamed(context, route);
+          await Navigator.pushNamed(context, route, arguments: arguments);
           // Recargar pendientes al volver
           _cargarPendientes();
         },

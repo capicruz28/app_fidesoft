@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/providers/user_provider.dart';
+import '../../../core/theme/module_theme.dart';
 import '../../../data/services/vacaciones_permisos_service.dart';
 
 class PermisosScreen extends StatefulWidget {
@@ -82,9 +83,13 @@ class _PermisosScreenState extends State<PermisosScreen> {
             title: 'Solicitar Permiso',
             subtitle: 'Registra una nueva solicitud de ausencia o permiso.',
             icon: Icons.edit_calendar_rounded,
-            route: '/permisos/solicitar', // RUTA DE NIVEL 2
+            route: '/permisos/solicitar',
             color: primaryColor,
             accentColor: accentColor,
+            arguments: ModuleTheme.navigationArgs(
+              primaryColor: primaryColor,
+              title: 'Solicitar Permiso',
+            ),
           ),
           const SizedBox(height: 15),
 
@@ -94,9 +99,13 @@ class _PermisosScreenState extends State<PermisosScreen> {
             title: 'Mis Solicitudes',
             subtitle: 'Consulta el estado y registro de todos tus permisos.',
             icon: Icons.list_alt_rounded,
-            route: '/permisos/reporte', // RUTA DE NIVEL 2
+            route: '/permisos/reporte',
             color: primaryColor,
             accentColor: accentColor,
+            arguments: ModuleTheme.navigationArgs(
+              primaryColor: primaryColor,
+              title: 'Mis Permisos',
+            ),
           ),
           const SizedBox(height: 15),
 
@@ -114,6 +123,10 @@ class _PermisosScreenState extends State<PermisosScreen> {
                   color: primaryColor,
                   accentColor: accentColor,
                   badgeCount: _pendientesCount > 0 ? _pendientesCount : null,
+                  arguments: ModuleTheme.navigationArgs(
+                    primaryColor: primaryColor,
+                    title: 'Pendientes de Aprobar',
+                  ),
                 );
               }
               return const SizedBox.shrink();
@@ -132,6 +145,7 @@ class _PermisosScreenState extends State<PermisosScreen> {
     required String route, 
     required Color color,
     required Color accentColor,
+    Map<String, dynamic>? arguments,
     int? badgeCount,
   }) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -191,7 +205,7 @@ class _PermisosScreenState extends State<PermisosScreen> {
           ],
         ),
         onTap: () async {
-          await Navigator.pushNamed(context, route);
+          await Navigator.pushNamed(context, route, arguments: arguments);
           // Recargar pendientes al volver
           _cargarPendientes();
         },

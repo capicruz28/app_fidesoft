@@ -4,12 +4,34 @@ import '../models/solicitud_model.dart';
 import '../models/saldo_vacaciones_model.dart';
 import '../models/trabajador_model.dart';
 import '../../core/network/api_client.dart';
+import '../../core/config/app_config.dart';
 
 class VacacionesPermisosService {
-  // URL del servidor de producción
-  // Nota: 10.0.2.2 es la IP especial del emulador Android para acceder al localhost del host
-  // Para pruebas locales, usar: http://10.0.2.2:8000/api/v1
-  final String baseUrl = 'http://170.231.171.118:9098/api/v1';
+  String _extraerDetail(dynamic detail) {
+    if (detail == null) return '';
+    if (detail is String) return detail;
+    if (detail is Map) {
+      return detail['code']?.toString() ??
+          detail['message']?.toString() ??
+          detail.toString();
+    }
+    return detail.toString();
+  }
+
+  Never _lanzarErrorSolicitud(
+    int statusCode,
+    dynamic errorBody,
+    String mensajeDefault,
+  ) {
+    final detailStr = _extraerDetail(
+      errorBody is Map ? errorBody['detail'] : null,
+    );
+    if (statusCode == 400 && detailStr.contains('SOLICITUD_FECHAS_SOLAPADAS')) {
+      throw Exception('SOLICITUD_FECHAS_SOLAPADAS');
+    }
+    final detail = errorBody is Map ? errorBody['detail'] : null;
+    throw Exception(detail ?? mensajeDefault);
+  }
 
   // Método auxiliar para obtener el nombre de usuario del token
   Future<String?> _getUsuarioFromToken() async {
@@ -72,10 +94,17 @@ class VacacionesPermisosService {
         return SolicitudModel.fromJson(json.decode(response.body));
       } else {
         final errorBody = json.decode(response.body);
-        throw Exception(errorBody['detail'] ?? 'Error al solicitar vacaciones');
+        _lanzarErrorSolicitud(
+          response.statusCode,
+          errorBody,
+          'Error al solicitar vacaciones',
+        );
       }
     } catch (e) {
-      throw Exception('Error de conexi?n: $e');
+      if (e.toString().contains('SOLICITUD_FECHAS_SOLAPADAS')) {
+        rethrow;
+      }
+      throw Exception('Error de conexión: $e');
     }
   }
 
@@ -87,7 +116,8 @@ class VacacionesPermisosService {
     int limit = 20,
   }) async {
     try {
-      final uri = Uri.parse('$baseUrl/vacaciones/mis-solicitudes').replace(
+      final uri =
+          Uri.parse('${AppConfig().baseUrl}/vacaciones/mis-solicitudes').replace(
         queryParameters: {'page': page.toString(), 'limit': limit.toString()},
       );
 
@@ -170,7 +200,30 @@ class VacacionesPermisosService {
         throw Exception('Error al obtener solicitud: ${response.statusCode}');
       }
     } catch (e) {
-      throw Exception('Error de conexi?n: $e');
+      throw Exception('Error de conexión: $e');
+    }
+  }
+
+  /// Anular una solicitud pendiente
+  Future<SolicitudModel> anularSolicitud({
+    required int idSolicitud,
+    required String motivoAnulacion,
+  }) async {
+    try {
+      final response = await ApiClient.delete(
+        '/vacaciones/solicitud/$idSolicitud',
+        headers: const {'Content-Type': 'application/json; charset=UTF-8'},
+        queryParameters: {'motivo_anulacion': motivoAnulacion},
+      );
+
+      if (response.statusCode == 200) {
+        return SolicitudModel.fromJson(json.decode(response.body));
+      } else {
+        final errorBody = json.decode(response.body);
+        throw Exception(errorBody['detail'] ?? 'Error al anular solicitud');
+      }
+    } catch (e) {
+      throw Exception('Error de conexión: $e');
     }
   }
 
@@ -586,7 +639,10 @@ class VacacionesPermisosService {
     required String codigoPermiso,
     required DateTime fechaInicio,
     required DateTime fechaFin,
-    required double diasSolicitados,
+    double? diasSolicitados,
+    String? horaInicio,
+    String? horaFin,
+    double? horasSolicitadas,
     String? observacion,
     String? motivo,
     String?
@@ -599,13 +655,25 @@ class VacacionesPermisosService {
         usuarioRegistro = await _getUsuarioFromToken();
       }
 
+      final fechaStr = fechaInicio.toIso8601String().split('T')[0];
+      final esModoHoras = horaInicio != null &&
+          horaFin != null &&
+          horasSolicitadas != null;
+
       final body = <String, dynamic>{
         'tipo_solicitud': 'P',
         'codigo_permiso': codigoPermiso,
         'codigo_trabajador': codigoTrabajador,
-        'fecha_inicio': fechaInicio.toIso8601String().split('T')[0],
-        'fecha_fin': fechaFin.toIso8601String().split('T')[0],
-        'dias_solicitados': diasSolicitados,
+        'fecha_inicio': fechaStr,
+        'fecha_fin': esModoHoras ? fechaStr : fechaFin.toIso8601String().split('T')[0],
+        if (esModoHoras) ...{
+          'dias_solicitados': 0,
+          'hora_inicio': horaInicio,
+          'hora_fin': horaFin,
+          'horas_solicitadas': horasSolicitadas,
+        } else ...{
+          'dias_solicitados': diasSolicitados,
+        },
         if (observacion != null && observacion.isNotEmpty)
           'observacion': observacion,
         if (motivo != null && motivo.isNotEmpty) 'motivo': motivo,
@@ -623,10 +691,17 @@ class VacacionesPermisosService {
         return SolicitudModel.fromJson(json.decode(response.body));
       } else {
         final errorBody = json.decode(response.body);
-        throw Exception(errorBody['detail'] ?? 'Error al solicitar permiso');
+        _lanzarErrorSolicitud(
+          response.statusCode,
+          errorBody,
+          'Error al solicitar permiso',
+        );
       }
     } catch (e) {
-      throw Exception('Error de conexi?n: $e');
+      if (e.toString().contains('SOLICITUD_FECHAS_SOLAPADAS')) {
+        rethrow;
+      }
+      throw Exception('Error de conexión: $e');
     }
   }
 
@@ -684,7 +759,7 @@ class VacacionesPermisosService {
       }
 
       final uri = Uri.parse(
-        '$baseUrl/vacaciones/trabajadores',
+        '${AppConfig().baseUrl}/vacaciones/trabajadores',
       ).replace(queryParameters: queryParams);
 
       final response = await ApiClient.get(
@@ -745,7 +820,7 @@ class VacacionesPermisosService {
       }
 
       final uri = Uri.parse(
-        '$baseUrl/vacaciones/cumpleanos-hoy',
+        '${AppConfig().baseUrl}/vacaciones/cumpleanos-hoy',
       ).replace(queryParameters: queryParams);
 
       final response = await ApiClient.get(

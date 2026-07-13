@@ -1,7 +1,8 @@
 // lib/data/models/catalogo_model.dart
 import 'dart:convert';
 
-CatalogoModel catalogoModelFromJson(String str) => CatalogoModel.fromJson(json.decode(str));
+CatalogoModel catalogoModelFromJson(String str) =>
+    CatalogoModel.fromJson(json.decode(str));
 
 class CatalogoModel {
   final String codigo;
@@ -20,10 +21,21 @@ class CatalogoModel {
 
 // Modelo para tipos de permiso
 class TipoPermisoModel extends CatalogoModel {
-  TipoPermisoModel({required super.codigo, required super.descripcion});
-  
-  factory TipoPermisoModel.fromJson(Map<String, dynamic> json) => TipoPermisoModel(
+  final String tiempo; // 'D' = Días, 'H' = Horas
+
+  TipoPermisoModel({
+    required super.codigo,
+    required super.descripcion,
+    this.tiempo = 'D',
+  });
+
+  bool get esPorDias => tiempo == 'D';
+  bool get esPorHoras => tiempo == 'H';
+
+  factory TipoPermisoModel.fromJson(Map<String, dynamic> json) =>
+      TipoPermisoModel(
         codigo: json["codigo"] ?? json["codigo_permiso"] ?? "",
         descripcion: json["descripcion"] ?? json["nombre_permiso"] ?? "",
+        tiempo: json["tiempo"]?.toString().toUpperCase() ?? 'D',
       );
 }

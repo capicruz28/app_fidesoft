@@ -2,12 +2,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/theme/module_theme.dart';
 import '../../../../data/services/vacaciones_permisos_service.dart';
 import '../../../../data/models/catalogo_model.dart';
 import '../../../../core/providers/user_provider.dart';
 
 class SolicitarPermisoScreen extends StatefulWidget {
-  const SolicitarPermisoScreen({super.key});
+  final Color primaryColor;
+  final String title;
+
+  const SolicitarPermisoScreen({
+    super.key,
+    this.primaryColor = ModuleTheme.permisosPrimary,
+    this.title = 'Solicitar Permiso',
+  });
 
   @override
   State<SolicitarPermisoScreen> createState() => _SolicitarPermisoScreenState();
@@ -22,10 +30,23 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
   DateTime? _fechaInicio;
   DateTime? _fechaFin;
   double? _diasSolicitados;
+  TimeOfDay? _horaInicio;
+  TimeOfDay? _horaFin;
+  double? _horasSolicitadas;
   final _observacionController = TextEditingController();
-  final _motivoController = TextEditingController();
   bool _isLoading = false;
   bool _cargandoCatalogos = true;
+  String _errorCatalogo = '';
+
+  bool get _esPorHoras => _tipoPermisoSeleccionado?.esPorHoras ?? false;
+
+  String _formatearHora(TimeOfDay hora) {
+    final h = hora.hour.toString().padLeft(2, '0');
+    final m = hora.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  String _formatearHoraDisplay(TimeOfDay hora) => _formatearHora(hora);
 
   @override
   void initState() {
@@ -34,43 +55,37 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
   }
 
   Future<void> _cargarCatalogos() async {
+    setState(() {
+      _cargandoCatalogos = true;
+      _errorCatalogo = '';
+    });
+
     try {
       final catalogos = await _service.obtenerCatalogos();
-      if (catalogos['tipos_permiso'] != null) {
+      final tiposRaw = catalogos['tipos_permiso'];
+
+      if (tiposRaw is! List || tiposRaw.isEmpty) {
         setState(() {
-          _tiposPermiso = (catalogos['tipos_permiso'] as List)
-              .map((json) => TipoPermisoModel.fromJson(json))
-              .toList();
+          _tiposPermiso = [];
           _cargandoCatalogos = false;
+          _errorCatalogo =
+              'No se encontraron tipos de permiso disponibles en el catálogo.';
         });
-      } else {
-        // Si no hay catálogo, usar valores por defecto
-        setState(() {
-          _tiposPermiso = [
-            TipoPermisoModel(codigo: '03', descripcion: 'Permiso por enfermedad'),
-            TipoPermisoModel(codigo: '04', descripcion: 'Permiso médico'),
-            TipoPermisoModel(codigo: '07', descripcion: 'Permiso personal'),
-            TipoPermisoModel(codigo: '08', descripcion: 'Permiso sin goce de haber'),
-            TipoPermisoModel(codigo: '10', descripcion: 'Permiso por duelo'),
-            TipoPermisoModel(codigo: '11', descripcion: 'Otro permiso'),
-          ];
-          _cargandoCatalogos = false;
-        });
+        return;
       }
-    } catch (e) {
-      // Si hay error, usar valores por defecto
+
       setState(() {
-        _tiposPermiso = [
-          TipoPermisoModel(codigo: '03', descripcion: 'Permiso por enfermedad'),
-          TipoPermisoModel(codigo: '04', descripcion: 'Permiso médico'),
-          TipoPermisoModel(codigo: '07', descripcion: 'Permiso personal'),
-          TipoPermisoModel(codigo: '08', descripcion: 'Permiso sin goce de haber'),
-          TipoPermisoModel(codigo: '10', descripcion: 'Permiso por duelo'),
-          TipoPermisoModel(codigo: '11', descripcion: 'Otro permiso'),
-        ];
+        _tiposPermiso = tiposRaw
+            .map((json) => TipoPermisoModel.fromJson(json as Map<String, dynamic>))
+            .toList();
         _cargandoCatalogos = false;
       });
-      print('Error al cargar catálogos: $e');
+    } catch (e) {
+      setState(() {
+        _tiposPermiso = [];
+        _cargandoCatalogos = false;
+        _errorCatalogo = 'Error al cargar catálogo de permisos: $e';
+      });
     }
   }
 
@@ -85,11 +100,58 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
     if (picked != null) {
       setState(() {
         _fechaInicio = picked;
-        if (_fechaFin != null && _fechaFin!.isBefore(_fechaInicio!)) {
+        if (_esPorHoras) {
+          _fechaFin = picked;
+        } else if (_fechaFin != null && _fechaFin!.isBefore(_fechaInicio!)) {
           _fechaFin = null;
           _diasSolicitados = null;
         }
-        _calcularDias();
+        if (_esPorHoras) {
+          _diasSolicitados = null;
+        } else {
+          _calcularDias();
+        }
+      });
+    }
+  }
+
+  Future<void> _selectHoraInicio() async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        _horaInicio = picked;
+        if (_horaFin != null) {
+          final inicioMin = picked.hour * 60 + picked.minute;
+          final finMin = _horaFin!.hour * 60 + _horaFin!.minute;
+          if (finMin <= inicioMin) {
+            _horaFin = null;
+            _horasSolicitadas = null;
+          }
+        }
+        _calcularHoras();
+      });
+    }
+  }
+
+  Future<void> _selectHoraFin() async {
+    if (_horaInicio == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Primero seleccione la hora de inicio')),
+      );
+      return;
+    }
+
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        _horaFin = picked;
+        _calcularHoras();
       });
     }
   }
@@ -118,10 +180,26 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
   }
 
   void _calcularDias() {
-    if (_fechaInicio != null && _fechaFin != null) {
+    if (!_esPorHoras && _fechaInicio != null && _fechaFin != null) {
       final diferencia = _fechaFin!.difference(_fechaInicio!);
       setState(() {
-        _diasSolicitados = diferencia.inDays + 1; // +1 para incluir ambos días
+        _diasSolicitados = diferencia.inDays + 1;
+      });
+    }
+  }
+
+  void _calcularHoras() {
+    if (_horaInicio != null && _horaFin != null) {
+      final inicioMin = _horaInicio!.hour * 60 + _horaInicio!.minute;
+      final finMin = _horaFin!.hour * 60 + _horaFin!.minute;
+      if (finMin <= inicioMin) {
+        setState(() {
+          _horasSolicitadas = null;
+        });
+        return;
+      }
+      setState(() {
+        _horasSolicitadas = (finMin - inicioMin) / 60.0;
       });
     }
   }
@@ -131,14 +209,27 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
       return;
     }
 
-    if (_tipoPermisoSeleccionado == null ||
-        _fechaInicio == null ||
-        _fechaFin == null ||
-        _diasSolicitados == null) {
+    if (_tipoPermisoSeleccionado == null || _fechaInicio == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Por favor complete todos los campos requeridos')),
       );
       return;
+    }
+
+    if (_esPorHoras) {
+      if (_horaInicio == null || _horaFin == null || _horasSolicitadas == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Por favor complete las horas de inicio y fin')),
+        );
+        return;
+      }
+    } else {
+      if (_fechaFin == null || _diasSolicitados == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Por favor complete todos los campos requeridos')),
+        );
+        return;
+      }
     }
 
     setState(() {
@@ -153,15 +244,32 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
         throw Exception('No se pudo obtener el código de trabajador');
       }
 
-      await _service.solicitarPermiso(
-        codigoTrabajador: codigoTrabajador,
-        codigoPermiso: _tipoPermisoSeleccionado!.codigo,
-        fechaInicio: _fechaInicio!,
-        fechaFin: _fechaFin!,
-        diasSolicitados: _diasSolicitados!,
-        observacion: _observacionController.text.isEmpty ? null : _observacionController.text,
-        motivo: _motivoController.text.isEmpty ? null : _motivoController.text,
-      );
+      if (_esPorHoras) {
+        await _service.solicitarPermiso(
+          codigoTrabajador: codigoTrabajador,
+          codigoPermiso: _tipoPermisoSeleccionado!.codigo,
+          fechaInicio: _fechaInicio!,
+          fechaFin: _fechaInicio!,
+          horaInicio: _formatearHora(_horaInicio!),
+          horaFin: _formatearHora(_horaFin!),
+          horasSolicitadas: _horasSolicitadas!,
+          diasSolicitados: 0,
+          observacion: _observacionController.text.isEmpty
+              ? null
+              : _observacionController.text,
+        );
+      } else {
+        await _service.solicitarPermiso(
+          codigoTrabajador: codigoTrabajador,
+          codigoPermiso: _tipoPermisoSeleccionado!.codigo,
+          fechaInicio: _fechaInicio!,
+          fechaFin: _fechaFin!,
+          diasSolicitados: _diasSolicitados!,
+          observacion: _observacionController.text.isEmpty
+              ? null
+              : _observacionController.text,
+        );
+      }
 
       if (!mounted) return;
 
@@ -175,12 +283,32 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
       Navigator.pop(context, true); // Retornar true para indicar éxito
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      final errorMsg = e.toString().toLowerCase();
+      final esSolapamiento = errorMsg.contains('solicitud_fechas_solapadas') ||
+          errorMsg.contains('ya existe una solicitud pendiente o aprobada');
+      if (esSolapamiento) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'No se pudo registrar la solicitud. Ya cuentas con una solicitud '
+              'en curso (Pendiente o Aprobada) que se cruza con las fechas '
+              'seleccionadas. Si deseas modificar tus días, por favor anula '
+              'primero la solicitud anterior desde tu historial.',
+              style: TextStyle(color: Colors.white, height: 1.35),
+            ),
+            backgroundColor: widget.primaryColor,
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -193,21 +321,48 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
   @override
   void dispose() {
     _observacionController.dispose();
-    _motivoController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = ModuleTheme.resolvePrimaryColor(
+      context,
+      fallback: widget.primaryColor,
+    );
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Solicitar Permiso'),
-        backgroundColor: Theme.of(context).primaryColor,
+        title: Text(widget.title),
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
       ),
       body: _cargandoCatalogos
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+          : _errorCatalogo.isNotEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                        const SizedBox(height: 16),
+                        Text(
+                          _errorCatalogo,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.red[700]),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _cargarCatalogos,
+                          child: const Text('Reintentar'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Form(
                 key: _formKey,
@@ -242,11 +397,19 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
                           );
                         }).toList();
                       },
-                      onChanged: (value) {
-                        setState(() {
-                          _tipoPermisoSeleccionado = value;
-                        });
-                      },
+                      onChanged: _tiposPermiso.isEmpty
+                          ? null
+                          : (value) {
+                              setState(() {
+                                _tipoPermisoSeleccionado = value;
+                                _fechaInicio = null;
+                                _fechaFin = null;
+                                _diasSolicitados = null;
+                                _horaInicio = null;
+                                _horaFin = null;
+                                _horasSolicitadas = null;
+                              });
+                            },
                       validator: (value) {
                         if (value == null) {
                           return 'Seleccione un tipo de permiso';
@@ -260,7 +423,7 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
                     TextFormField(
                       readOnly: true,
                       decoration: InputDecoration(
-                        labelText: 'Fecha de Inicio *',
+                        labelText: _esPorHoras ? 'Fecha *' : 'Fecha de Inicio *',
                         prefixIcon: const Icon(Icons.calendar_today),
                         suffixIcon: IconButton(
                           icon: const Icon(Icons.event),
@@ -274,68 +437,135 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
                       ),
                       validator: (value) {
                         if (_fechaInicio == null) {
-                          return 'Seleccione la fecha de inicio';
+                          return _esPorHoras
+                              ? 'Seleccione la fecha'
+                              : 'Seleccione la fecha de inicio';
                         }
                         return null;
                       },
                     ),
                     const SizedBox(height: 16),
 
-                    // Fecha de Fin
-                    TextFormField(
-                      readOnly: true,
-                      decoration: InputDecoration(
-                        labelText: 'Fecha de Fin *',
-                        prefixIcon: const Icon(Icons.calendar_today),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.event),
-                          onPressed: _selectFechaFin,
+                    if (!_esPorHoras) ...[
+                      // Fecha de Fin (solo modo días)
+                      TextFormField(
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          labelText: 'Fecha de Fin *',
+                          prefixIcon: const Icon(Icons.calendar_today),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.event),
+                            onPressed: _selectFechaFin,
+                          ),
+                        ),
+                        controller: TextEditingController(
+                          text: _fechaFin != null
+                              ? DateFormat('dd/MM/yyyy', 'es').format(_fechaFin!)
+                              : '',
+                        ),
+                        validator: (value) {
+                          if (_fechaFin == null) {
+                            return 'Seleccione la fecha de fin';
+                          }
+                          if (_fechaInicio != null &&
+                              _fechaFin!.isBefore(_fechaInicio!)) {
+                            return 'La fecha de fin debe ser posterior a la fecha de inicio';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Días Solicitados (solo modo días)
+                      TextFormField(
+                        readOnly: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Días Solicitados',
+                          prefixIcon: Icon(Icons.calculate),
+                        ),
+                        controller: TextEditingController(
+                          text: _diasSolicitados != null
+                              ? '${_diasSolicitados!.toStringAsFixed(1)} días'
+                              : '',
                         ),
                       ),
-                      controller: TextEditingController(
-                        text: _fechaFin != null
-                            ? DateFormat('dd/MM/yyyy', 'es').format(_fechaFin!)
-                            : '',
-                      ),
-                      validator: (value) {
-                        if (_fechaFin == null) {
-                          return 'Seleccione la fecha de fin';
-                        }
-                        if (_fechaInicio != null && _fechaFin!.isBefore(_fechaInicio!)) {
-                          return 'La fecha de fin debe ser posterior a la fecha de inicio';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+                    ],
 
-                    // Días Solicitados
-                    TextFormField(
-                      readOnly: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Días Solicitados',
-                        prefixIcon: Icon(Icons.calculate),
+                    if (_esPorHoras) ...[
+                      // Hora de Inicio (modo horas)
+                      TextFormField(
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          labelText: 'Hora de Inicio *',
+                          prefixIcon: const Icon(Icons.access_time),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.schedule),
+                            onPressed: _selectHoraInicio,
+                          ),
+                        ),
+                        controller: TextEditingController(
+                          text: _horaInicio != null
+                              ? _formatearHoraDisplay(_horaInicio!)
+                              : '',
+                        ),
+                        validator: (value) {
+                          if (_horaInicio == null) {
+                            return 'Seleccione la hora de inicio';
+                          }
+                          return null;
+                        },
                       ),
-                      controller: TextEditingController(
-                        text: _diasSolicitados != null
-                            ? '${_diasSolicitados!.toStringAsFixed(1)} días'
-                            : '',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // Motivo
-                    TextFormField(
-                      controller: _motivoController,
-                      decoration: const InputDecoration(
-                        labelText: 'Motivo (Opcional)',
-                        prefixIcon: Icon(Icons.description),
-                        hintText: 'Ingrese el motivo del permiso...',
+                      // Hora de Fin (modo horas)
+                      TextFormField(
+                        readOnly: true,
+                        decoration: InputDecoration(
+                          labelText: 'Hora de Fin *',
+                          prefixIcon: const Icon(Icons.access_time_filled),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.schedule),
+                            onPressed: _selectHoraFin,
+                          ),
+                        ),
+                        controller: TextEditingController(
+                          text: _horaFin != null
+                              ? _formatearHoraDisplay(_horaFin!)
+                              : '',
+                        ),
+                        validator: (value) {
+                          if (_horaFin == null) {
+                            return 'Seleccione la hora de fin';
+                          }
+                          if (_horaInicio != null && _horaFin != null) {
+                            final inicioMin =
+                                _horaInicio!.hour * 60 + _horaInicio!.minute;
+                            final finMin = _horaFin!.hour * 60 + _horaFin!.minute;
+                            if (finMin <= inicioMin) {
+                              return 'La hora de fin debe ser posterior a la de inicio';
+                            }
+                          }
+                          return null;
+                        },
                       ),
-                      maxLines: 2,
-                      maxLength: 200,
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+
+                      // Horas Solicitadas (modo horas)
+                      TextFormField(
+                        readOnly: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Horas Solicitadas',
+                          prefixIcon: Icon(Icons.timelapse),
+                        ),
+                        controller: TextEditingController(
+                          text: _horasSolicitadas != null
+                              ? '${_horasSolicitadas!.toStringAsFixed(1)} horas'
+                              : '',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
 
                     // Observaciones
                     TextFormField(
@@ -354,7 +584,7 @@ class _SolicitarPermisoScreenState extends State<SolicitarPermisoScreen> {
                     ElevatedButton(
                       onPressed: _isLoading ? null : _enviarSolicitud,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).primaryColor,
+                        backgroundColor: primaryColor,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(

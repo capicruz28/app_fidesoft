@@ -2,12 +2,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/theme/module_theme.dart';
 import '../../../../data/services/vacaciones_permisos_service.dart';
 import '../../../../data/models/saldo_vacaciones_model.dart';
 import '../../../../core/providers/user_provider.dart';
 
 class SolicitarVacacionesScreen extends StatefulWidget {
-  const SolicitarVacacionesScreen({super.key});
+  final Color primaryColor;
+  final String title;
+
+  const SolicitarVacacionesScreen({
+    super.key,
+    this.primaryColor = ModuleTheme.vacacionesPrimary,
+    this.title = 'Solicitar Vacaciones',
+  });
 
   @override
   State<SolicitarVacacionesScreen> createState() => _SolicitarVacacionesScreenState();
@@ -162,12 +170,32 @@ class _SolicitarVacacionesScreenState extends State<SolicitarVacacionesScreen> {
       Navigator.pop(context, true); // Retornar true para indicar éxito
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      final errorMsg = e.toString().toLowerCase();
+      final esSolapamiento = errorMsg.contains('solicitud_fechas_solapadas') ||
+          errorMsg.contains('ya existe una solicitud pendiente o aprobada');
+      if (esSolapamiento) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'No se pudo registrar la solicitud. Ya cuentas con una solicitud '
+              'en curso (Pendiente o Aprobada) que se cruza con las fechas '
+              'seleccionadas. Si deseas modificar tus días, por favor anula '
+              'primero la solicitud anterior desde tu historial.',
+              style: TextStyle(color: Colors.white, height: 1.35),
+            ),
+            backgroundColor: widget.primaryColor,
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -185,10 +213,15 @@ class _SolicitarVacacionesScreenState extends State<SolicitarVacacionesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = ModuleTheme.resolvePrimaryColor(
+      context,
+      fallback: widget.primaryColor,
+    );
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Solicitar Vacaciones'),
-        backgroundColor: Theme.of(context).primaryColor,
+        title: Text(widget.title),
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -329,7 +362,7 @@ class _SolicitarVacacionesScreenState extends State<SolicitarVacacionesScreen> {
               ElevatedButton(
                 onPressed: _isLoading ? null : _enviarSolicitud,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).primaryColor,
+                  backgroundColor: primaryColor,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(

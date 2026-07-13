@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../data/services/auth_service.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/providers/user_provider.dart';
 import '../../../core/services/notification_service.dart';
 import 'login_screen.dart';
@@ -24,6 +25,19 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkAutoLogin() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedBaseUrl = prefs.getString('base_url_cliente');
+      if (savedBaseUrl == null || savedBaseUrl.isEmpty) {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+        return;
+      }
+
+      AppConfig().setBaseUrl(savedBaseUrl);
+
       final authService = AuthService();
       final userModel = await authService.autoLogin();
 
@@ -35,10 +49,10 @@ class _SplashScreenState extends State<SplashScreen> {
         
         // Obtener RUC guardado
         final savedCredentials = await authService.getSavedCredentials();
+        if (!mounted) return;
         final ruc = savedCredentials?['ruc'] ?? '';
         
         // Obtener correo guardado
-        final prefs = await SharedPreferences.getInstance();
         final userEmail = prefs.getString('user_email');
         
         // Establecer usuario en el provider
@@ -49,6 +63,7 @@ class _SplashScreenState extends State<SplashScreen> {
         if (codigoTrabajador.isNotEmpty) {
           await NotificationService.registerTokenAfterLogin(codigoTrabajador);
         }
+        if (!mounted) return;
 
         // Gate post-login: muestra aviso pendiente antes del dashboard (si aplica)
         Navigator.pushReplacement(

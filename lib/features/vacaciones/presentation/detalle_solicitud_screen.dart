@@ -1,15 +1,18 @@
 // lib/features/vacaciones/presentation/detalle_solicitud_screen.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/theme/module_theme.dart';
 import '../../../../data/models/solicitud_model.dart';
 import '../../../../data/services/vacaciones_permisos_service.dart';
 
 class DetalleSolicitudScreen extends StatefulWidget {
   final SolicitudModel solicitud;
+  final Color? primaryColor;
 
   const DetalleSolicitudScreen({
     super.key,
     required this.solicitud,
+    this.primaryColor,
   });
 
   @override
@@ -49,6 +52,10 @@ class _DetalleSolicitudScreenState extends State<DetalleSolicitudScreen> {
           fechaInicio: solicitud.fechaInicio,
           fechaFin: solicitud.fechaFin,
           diasSolicitados: solicitud.diasSolicitados,
+          tiempo: solicitud.tiempo,
+          horaInicio: solicitud.horaInicio,
+          horaFin: solicitud.horaFin,
+          horasSolicitadas: solicitud.horasSolicitadas,
           observacion: solicitud.observacion,
           motivo: solicitud.motivo,
           estado: solicitud.estado,
@@ -90,11 +97,13 @@ class _DetalleSolicitudScreenState extends State<DetalleSolicitudScreen> {
   @override
   Widget build(BuildContext context) {
     final solicitud = _solicitudCompleta ?? widget.solicitud;
+    final primaryColor = widget.primaryColor ??
+        ModuleTheme.primaryForTipo(solicitud.tipoSolicitud);
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Detalle de ${solicitud.tipoSolicitudTexto}'),
-        backgroundColor: Theme.of(context).primaryColor,
+        backgroundColor: primaryColor,
         foregroundColor: Colors.white,
       ),
       body: _isLoading
